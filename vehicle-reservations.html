@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Vehicle Reservations</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f1f3f6;
+      margin: 0;
+      padding: 0 20px 40px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #343a40;
+      color: white;
+      padding: 15px 20px;
+      margin: 0 -20px 20px;
+    }
+
+    header h3 {
+      margin: 0;
+    }
+
+    .btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .btn-success { background-color: #28a745; color: white; }
+    .btn-danger  { background-color: #dc3545; color: white; }
+    .btn-back    { background-color: #007bff; color: white; margin-left: 10px; }
+    .btn-logout  { background-color: #6c757d; color: white; }
+
+    select, input[type="text"] {
+      padding: 6px 12px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      margin-right: 10px;
+    }
+
+    .reservation {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    .reservation h4 {
+      margin: 0 0 10px;
+      font-size: 20px;
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      text-transform: capitalize;
+      margin-left: 10px;
+    }
+
+    .badge.pending  { background: orange; color: white; }
+    .badge.approved { background: green; color: white; }
+    .badge.rejected { background: red; color: white; }
+
+    .actions button {
+      margin-right: 10px;
+    }
+
+    .stats {
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h3>Vehicle Reservations</h3>
+    <div>
+      <button onclick="window.location.href='admin_dashboard.html'" class="btn btn-back">&larr; Back to Dashboard</button>
+      <button id="logout" class="btn btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <label for="statusFilter"><strong>Status:</strong></label>
+    <select id="statusFilter">
+      <option value="all">All</option>
+      <option value="pending">Pending</option>
+      <option value="approved">Approved</option>
+      <option value="rejected">Rejected</option>
+    </select>
+
+    <label for="searchName"><strong>Search Name:</strong></label>
+    <input type="text" id="searchName" placeholder="Enter name">
+
+    <label for="dateFilter"><strong>Date:</strong></label>
+    <input type="text" id="dateFilter" placeholder="Select date">
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <div id="reservations"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+    import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCX0BjrBiuk5FcClSQjpww2iD2YNsGl2gM",
+      authDomain: "ctu-vehicle-reservation-system.firebaseapp.com",
+      databaseURL: "https://ctu-vehicle-reservation-system-default-rtdb.firebaseio.com",
+      projectId: "ctu-vehicle-reservation-system",
+      storageBucket: "ctu-vehicle-reservation-system.appspot.com",
+      messagingSenderId: "17442181026",
+      appId: "1:17442181026:web:7b10c9d9eb04fdb4332cfb"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+    const reservationsRef = ref(db, 'reservations');
+
+    const statusFilter = document.getElementById('statusFilter');
+    const reservationsContainer = document.getElementById('reservations');
+    const searchName = document.getElementById('searchName');
+    const dateFilter = document.getElementById('dateFilter');
+    const statsDiv = document.getElementById('stats');
+
+    flatpickr("#dateFilter", { dateFormat: "Y-m-d" });
+
+    function renderStats(data) {
+      let total = data.length;
+      let pending = data.filter(r => r.status === 'pending').length;
+      let approved = data.filter(r => r.status === 'approved').length;
+      let rejected = data.filter(r => r.status === 'rejected').length;
+      statsDiv.innerHTML = `Total: ${total}, Pending: ${pending}, Approved: ${approved}, Rejected: ${rejected}`;
+    }
+
+    function renderReservations() {
+      onValue(reservationsRef, snapshot => {
+        const rawData = snapshot.val();
+        let reservations = [];
+
+        for (const [id, r] of Object.entries(rawData || {})) {
+          if (!r || typeof r !== 'object') continue;
+          reservations.push({ id, ...r });
+        }
+
+        const status = statusFilter.value;
+        const search = searchName.value.toLowerCase();
+        const date = dateFilter.value;
+
+        reservations = reservations.filter(r => {
+          return (status === 'all' || r.status === status) &&
+                 (!search || (r.name || '').toLowerCase().includes(search)) &&
+                 (!date || r.date === date);
+        });
+
+        reservations.sort((a, b) => {
+          const priority = { pending: 0, approved: 1, rejected: 2 };
+          return (priority[a.status] ?? 3) - (priority[b.status] ?? 3);
+        });
+
+        renderStats(reservations);
+        reservationsContainer.innerHTML = '';
+
+        reservations.forEach(r => {
+          const div = document.createElement('div');
+          div.className = 'reservation';
+          div.innerHTML = `
+            <h4>${r.name || 'Unknown'}
+              <span class="badge ${r.status || 'pending'}">${r.status || 'pending'}</span>
+            </h4>
+            <p><strong>Department:</strong> ${r.department || 'N/A'}</p>
+            <p><strong>Purpose:</strong> ${r.purpose || 'N/A'}</p>
+            <p><strong>Destination:</strong> ${r.destination || 'N/A'}</p>
+            <p><strong>Date:</strong> ${r.date || 'N/A'}</p>
+            <p><strong>Time Slot:</strong> ${r.timeSlot || 'N/A'}</p>
+            <p><strong>Vehicle:</strong> ${r.vehicle || 'N/A'}</p>
+            <p><strong>Plate:</strong> ${r.plate || 'N/A'}</p>
+            <p><strong>Driver:</strong> ${r.driverName || '—'} (${r.driver || '—'})</p>
+            <p><strong>Driver Email:</strong> ${r.driverEmail || '—'}</p>
+            <div class="actions" id="actions-${r.id}"></div>
+          `;
+
+          reservationsContainer.appendChild(div);
+
+          if (r.status === 'pending') {
+            const actionsDiv = div.querySelector(`#actions-${r.id}`);
+
+            const approveBtn = document.createElement('button');
+            approveBtn.className = 'btn btn-success';
+            approveBtn.textContent = 'Approve';
+            approveBtn.onclick = () => {
+              update(ref(db, `reservations/${r.id}`), {
+                status: 'approved',
+                notifyDriver: true
+              }).then(() => {
+                alert("Reservation approved.");
+                renderReservations();
+              });
+            };
+
+            const rejectBtn = document.createElement('button');
+            rejectBtn.className = 'btn btn-danger';
+            rejectBtn.textContent = 'Reject';
+            rejectBtn.onclick = () => {
+              update(ref(db, `reservations/${r.id}`), {
+                status: 'rejected',
+                notifyDriver: false
+              }).then(() => {
+                alert("Reservation rejected.");
+                renderReservations();
+              });
+            };
+
+            actionsDiv.appendChild(approveBtn);
+            actionsDiv.appendChild(rejectBtn);
+          }
+        });
+      });
+    }
+
+    document.getElementById('logout').onclick = () => {
+      signOut(auth).then(() => {
+        alert("Logged out");
+        window.location.href = "admin-login.html";
+      });
+    };
+
+    onAuthStateChanged(auth, user => {
+      if (!user) {
+        alert("Please log in first.");
+        window.location.href = "admin-login.html";
+      } else {
+        renderReservations();
+        statusFilter.onchange = searchName.oninput = dateFilter.onchange = renderReservations;
+      }
+    });
+  </script>
+</body>
+</html>

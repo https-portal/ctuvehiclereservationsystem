@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Confirmed Reservations</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #eef2f3;
+    }
+
+    /* Header bar */
+    .topbar {
+      background: #1c1c1c;
+      color: white;
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .topbar h3 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    .topbar-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    .topbar button {
+      background: #444;
+      color: white;
+      padding: 8px 14px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .topbar button:hover {
+      background: #666;
+    }
+
+    /* Main content */
+    .content {
+      padding: 20px;
+    }
+
+    .reservation {
+      background: #fff;
+      padding: 18px;
+      margin: 15px 0;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    }
+
+    .reservation p {
+      margin: 8px 0;
+      font-size: 0.95rem;
+    }
+
+    .reservation p strong {
+      width: 140px;
+      display: inline-block;
+    }
+
+    @media (max-width: 600px) {
+      .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <h3>Confirmed Reservations</h3>
+    <div class="topbar-buttons">
+      <button id="backBtn">⬅ Back to Dashboard</button>
+      <button id="logout">Logout</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="confirmedList"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+    import { getDatabase, ref, onValue, get, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCX0BjrBiuk5FcClSQjpww2iD2YNsGl2gM",
+      authDomain: "ctu-vehicle-reservation-system.firebaseapp.com",
+      databaseURL: "https://ctu-vehicle-reservation-system-default-rtdb.firebaseio.com",
+      projectId: "ctu-vehicle-reservation-system",
+      storageBucket: "ctu-vehicle-reservation-system.appspot.com",
+      messagingSenderId: "17442181026",
+      appId: "1:17442181026:web:7b10c9d9eb04fdb4332cfb"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+    const reservationsRef = ref(db, 'reservations');
+    const vehiclesRef = ref(db, 'vehicles');
+    const driversRef = ref(db, 'drivers');
+    const confirmedList = document.getElementById('confirmedList');
+
+    onAuthStateChanged(auth, user => {
+      if (!user) {
+        alert("Please log in first.");
+        window.location.href = "admin-login.html";
+      } else {
+        loadConfirmedReservations();
+      }
+    });
+
+    async function loadConfirmedReservations() {
+      confirmedList.innerHTML = '';
+
+      const [reservationsSnap, driversSnap] = await Promise.all([
+        get(reservationsRef),
+        get(driversRef)
+      ]);
+
+      const reservations = reservationsSnap.val();
+      const drivers = driversSnap.val();
+
+      if (!reservations) {
+        confirmedList.innerHTML = "<p>No confirmed reservations.</p>";
+        return;
+      }
+
+      Object.entries(reservations).forEach(([id, r]) => {
+        if (r.status === 'approved' && r.driverConfirmation === "Confirmed") {
+          let driverFullName = "N/A";
+
+          if (drivers) {
+            for (const [key, driver] of Object.entries(drivers)) {
+              const emailMatch = driver.email && r.driver && driver.email.trim().toLowerCase() === r.driver.trim().toLowerCase();
+              const nameMatch = driver.name && r.driver && driver.name.trim().toLowerCase() === r.driver.trim().toLowerCase();
+
+              if (emailMatch || nameMatch) {
+                driverFullName = driver.name || driver.fullName || "N/A";
+                break;
+              }
+            }
+          }
+
+          console.log(`Reservation driver: ${r.driver} → Matched Name: ${driverFullName}`);
+
+          const div = document.createElement('div');
+          div.className = 'reservation';
+
+          div.innerHTML = `
+            <p><strong>Name:</strong> ${r.name || 'N/A'}</p>
+            <p><strong>Department:</strong> ${r.department || 'N/A'}</p>
+            <p><strong>Purpose:</strong> ${r.purpose || 'N/A'}</p>
+            <p><strong>Destination:</strong> ${r.destination || 'N/A'}</p>
+            <p><strong>Date:</strong> ${r.date || 'N/A'}</p>
+            <p><strong>Time Slot:</strong> ${r.timeSlot || 'N/A'}</p>
+            <p><strong>Vehicle:</strong> ${r.vehicle || 'N/A'}</p>
+            <p><strong>Driver:</strong> ${driverFullName}</p>
+            <p><strong>Status:</strong> ✅ Confirmed by Driver</p>
+          `;
+          confirmedList.appendChild(div);
+
+          updateVehicleStatus(r.vehicle);
+        }
+      });
+    }
+
+    function updateVehicleStatus(plate) {
+      const vRef = ref(db, 'vehicles');
+      onValue(vRef, snapshot => {
+        const vehicles = snapshot.val();
+        if (!vehicles) return;
+
+        Object.entries(vehicles).forEach(([key, vehicle]) => {
+          if (vehicle.plate === plate && vehicle.status !== 'Reserved') {
+            update(ref(db, `vehicles/${key}`), { status: 'Reserved' });
+          }
+        });
+      }, { onlyOnce: true });
+    }
+
+    document.getElementById('logout').onclick = () => {
+      signOut(auth).then(() => {
+        alert("Logged out");
+        window.location.href = "admin-login.html";
+      });
+    };
+
+    document.getElementById('backBtn').onclick = () => {
+      window.location.href = "admin_dashboard.html";
+    };
+  </script>
+
+</body>
+</html>

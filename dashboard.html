@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CTU Vehicle Reservation</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+    body { font-family: Arial, sans-serif; background: #f2f2f2; padding: 20px; }
+    h2 { text-align: center; }
+    form {
+      max-width: 600px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    button {
+      background: #007BFF;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    button:hover { background: #0056b3; }
+    #logoutBtn, #myReservationsBtn {
+      width: 180px;
+      margin: 10px auto;
+      display: block;
+    }
+    #logoutBtn { background: #dc3545; }
+    #myReservationsBtn { background: #28a745; }
+    #myReservationsBtn:hover { background: #218838; }
+  </style>
+</head>
+<body>
+
+<h2>User Dashboard - Reserve a Vehicle</h2>
+<button id="logoutBtn">Logout</button>
+<button id="myReservationsBtn">My Reservations</button>
+
+<form id="reservationForm">
+  <label for="name">Name:</label>
+  <input type="text" id="name" required>
+
+  <label for="department">Department:</label>
+  <input type="text" id="department" required>
+
+  <label for="purpose">Purpose:</label>
+  <textarea id="purpose" required></textarea>
+
+  <label for="destination">Destination:</label>
+  <input type="text" id="destination" required>
+
+  <label for="contact">Contact Info:</label>
+  <input type="text" id="contact" required>
+
+  <label for="date">Preferred Date:</label>
+  <input type="text" id="date" required>
+
+  <label for="timeSlot">Time Slot:</label>
+  <select id="timeSlot" required>
+    <option value="">Select</option>
+    <option value="8:00 AM - 10:00 AM">8:00 AM - 10:00 AM</option>
+    <option value="10:00 AM - 12:00 PM">10:00 AM - 12:00 PM</option>
+    <option value="1:00 PM - 3:00 PM">1:00 PM - 3:00 PM</option>
+    <option value="3:00 PM - 5:00 PM">3:00 PM - 5:00 PM</option>
+  </select>
+
+  <label for="vehicle">Vehicle:</label>
+  <select id="vehicle" required>
+    <option value="">Loading...</option>
+  </select>
+
+  <label for="driver">Driver:</label>
+  <select id="driver" required>
+    <option value="">Loading...</option>
+  </select>
+
+  <button type="submit">Submit Reservation</button>
+</form>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+  import {
+    getAuth,
+    onAuthStateChanged,
+    signOut
+  } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+  import {
+    getDatabase,
+    ref,
+    push,
+    set,
+    get,
+    child
+  } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCX0BjrBiuk5FcClSQjpww2iD2YNsGl2gM",
+    authDomain: "ctu-vehicle-reservation-system.firebaseapp.com",
+    databaseURL: "https://ctu-vehicle-reservation-system-default-rtdb.firebaseio.com",
+    projectId: "ctu-vehicle-reservation-system",
+    storageBucket: "ctu-vehicle-reservation-system.appspot.com",
+    messagingSenderId: "17442181026",
+    appId: "1:17442181026:web:7b10c9d9eb04fdb4332cfb"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const auth = getAuth(app);
+
+  const logoutBtn = document.getElementById("logoutBtn");
+  const myReservationsBtn = document.getElementById("myReservationsBtn");
+
+  onAuthStateChanged(auth, user => {
+    if (!user) window.location.href = "reserve.html";
+  });
+
+  logoutBtn.onclick = () => signOut(auth).then(() => window.location.href = "reserve.html");
+  myReservationsBtn.onclick = () => window.location.href = "my-reservations.html";
+
+  const maxPerDay = 4;
+
+  async function getAvailableDates() {
+    const snapshot = await get(child(ref(db), "reservations"));
+    const dateCounts = {};
+
+    if (snapshot.exists()) {
+      snapshot.forEach(child => {
+        const data = child.val();
+        if (data.status === "approved" || data.status === "pending") {
+          const date = data.date;
+          if (!dateCounts[date]) dateCounts[date] = 0;
+          dateCounts[date]++;
+        }
+      });
+    }
+
+    const today = new Date();
+    const available = [];
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() + i);
+      const formatted = date.toISOString().split("T")[0];
+      if (!dateCounts[formatted] || dateCounts[formatted] < maxPerDay) {
+        available.push(formatted);
+      }
+    }
+    return available;
+  }
+
+  getAvailableDates().then(available => {
+    flatpickr("#date", {
+      dateFormat: "Y-m-d",
+      enable: available
+    });
+  });
+
+  // Load vehicle & driver dropdowns
+  const vehicleSelect = document.getElementById("vehicle");
+  const driverSelect = document.getElementById("driver");
+
+  function loadVehicles() {
+    get(ref(db, "vehicles")).then(snapshot => {
+      vehicleSelect.innerHTML = '<option value="">Select Vehicle</option>';
+      if (snapshot.exists()) {
+        Object.values(snapshot.val()).forEach(vehicle => {
+          const opt = document.createElement("option");
+          const data = { name: vehicle.name, plate: vehicle.plate };
+          opt.value = JSON.stringify(data);
+          opt.textContent = `${vehicle.name} (${vehicle.plate})`;
+          vehicleSelect.appendChild(opt);
+        });
+      }
+    });
+  }
+
+  function loadDrivers() {
+    get(ref(db, "drivers")).then(snapshot => {
+      driverSelect.innerHTML = '<option value="">Select Driver</option>';
+      if (snapshot.exists()) {
+        Object.values(snapshot.val()).forEach(driver => {
+          const opt = document.createElement("option");
+          const data = { name: driver.name, email: driver.email };
+          opt.value = JSON.stringify(data);
+          opt.textContent = driver.name;
+          driverSelect.appendChild(opt);
+        });
+      }
+    });
+  }
+
+  loadVehicles();
+  loadDrivers();
+
+  document.getElementById("reservationForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const selectedVehicle = JSON.parse(document.getElementById("vehicle").value);
+    const selectedDriver = JSON.parse(document.getElementById("driver").value);
+
+    const reservation = {
+      name: document.getElementById("name").value,
+      department: document.getElementById("department").value,
+      purpose: document.getElementById("purpose").value,
+      destination: document.getElementById("destination").value,
+      contact: document.getElementById("contact").value,
+      date: document.getElementById("date").value,
+      timeSlot: document.getElementById("timeSlot").value,
+      vehicle: selectedVehicle.name,
+      plate: selectedVehicle.plate,
+      driver: selectedDriver.name,
+      driverEmail: selectedDriver.email,
+      status: "pending",
+      userEmail: user.email
+    };
+
+    const reservationsRef = ref(db, "reservations");
+    const newRef = push(reservationsRef);
+
+    set(newRef, reservation)
+      .then(() => {
+        alert("Reservation submitted! Await admin approval.");
+        document.getElementById("reservationForm").reset();
+      })
+      .catch(err => alert("Error: " + err.message));
+  });
+</script>
+</body>
+</html>

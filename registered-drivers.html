@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Registered Drivers & Trips</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+    }
+    header {
+      background: #000;
+      color: #fff;
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h3 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+    .header-buttons {
+      display: flex;
+      gap: 10px;
+    }
+    .header-buttons button {
+      background: #666;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .header-buttons button:hover {
+      background: #444;
+    }
+    .container {
+      padding: 20px;
+      max-width: 1200px;
+      margin: auto;
+    }
+    #searchInput {
+      margin-top: 20px;
+      padding: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 1rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      margin-top: 20px;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 12px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+    th {
+      background: #333;
+      color: white;
+    }
+    .delete-driver {
+      background: #e53935;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .delete-driver:hover {
+      background-color: #b71c1c;
+    }
+    .view-details {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    .view-details:hover {
+      background: #0056b3;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-content h4 {
+      margin-top: 0;
+    }
+    .close-modal {
+      background: #e53935;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      float: right;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h3>Registered Drivers & Trips</h3>
+    <div class="header-buttons">
+      <button onclick="window.location.href='admin_dashboard.html'">Back to Dashboard</button>
+      <button id="logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <input type="text" id="searchInput" placeholder="Search by name or email..." />
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Trips</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="driverList">
+        <tr><td colspan="4">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal" id="tripModal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="closeModal()">Close</button>
+      <h4>Trip Details</h4>
+      <table id="tripDetailsTable" style="width:100%; border-collapse: collapse; margin-top:10px;">
+        <thead>
+          <tr>
+            <th>Vehicle</th>
+            <th>Date</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+    import { getDatabase, ref, onValue, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCX0BjrBiuk5FcClSQjpww2iD2YNsGl2gM",
+      authDomain: "ctu-vehicle-reservation-system.firebaseapp.com",
+      databaseURL: "https://ctu-vehicle-reservation-system-default-rtdb.firebaseio.com",
+      projectId: "ctu-vehicle-reservation-system",
+      storageBucket: "ctu-vehicle-reservation-system.appspot.com",
+      messagingSenderId: "17442181026",
+      appId: "1:17442181026:web:7b10c9d9eb04fdb4332cfb"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+    const driverRef = ref(db, 'drivers');
+    const tripRef = ref(db, 'reservations'); // 🔄 changed from 'trips' to 'reservations'
+
+    const driverList = document.getElementById('driverList');
+    const searchInput = document.getElementById('searchInput');
+    const tripModal = document.getElementById('tripModal');
+    const tripDetailsTable = document.querySelector('#tripDetailsTable tbody');
+
+    let allDrivers = {}, allTrips = {};
+
+    onAuthStateChanged(auth, user => {
+      if (!user) {
+        alert("Please log in first.");
+        window.location.href = "admin-login.html";
+      } else {
+        loadData();
+      }
+    });
+
+    function loadData() {
+      onValue(tripRef, tsnap => {
+        allTrips = tsnap.val() || {};
+        onValue(driverRef, dsnap => {
+          allDrivers = dsnap.val() || {};
+          renderDrivers();
+        });
+      });
+    }
+
+    function renderDrivers() {
+      const query = searchInput.value.trim().toLowerCase();
+      driverList.innerHTML = '';
+
+      const filtered = Object.entries(allDrivers)
+        .filter(([_, d]) => d.name.toLowerCase().includes(query) || d.email.toLowerCase().includes(query));
+      if (filtered.length === 0) {
+        driverList.innerHTML = "<tr><td colspan='4'>No drivers found.</td></tr>";
+        return;
+      }
+
+      filtered.forEach(([id, driver]) => {
+        const trips = Object.values(allTrips).filter(tr => tr.driverEmail === driver.email); // ✅ fixed this line
+        const statusCount = trips.reduce((acc, t) => {
+          acc[t.status] = (acc[t.status]||0) + 1;
+          return acc;
+        }, {});
+        const tripSummary = Object.entries(statusCount).map(([s, c]) => `${c} ${s}`).join(', ') || 'No trips';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${driver.name}</td>
+          <td>${driver.email}</td>
+          <td>${tripSummary}</td>
+          <td>
+            <button class="view-details">View Details</button>
+            <button class="delete-driver">Delete</button>
+          </td>
+        `;
+
+        row.querySelector('.view-details').onclick = () => openModal(trips, driver.name);
+        row.querySelector('.delete-driver').onclick = () => {
+          if (confirm(`Delete ${driver.name}?`)) remove(ref(db, 'drivers/' + id));
+        };
+        driverList.appendChild(row);
+      });
+    }
+
+    function openModal(trips, driverName) {
+      tripDetailsTable.innerHTML = '';
+      if (trips.length === 0) {
+        tripDetailsTable.innerHTML = '<tr><td colspan="3">No trips found.</td></tr>';
+      } else {
+        trips.forEach(tr => {
+          const trEl = document.createElement('tr');
+          trEl.innerHTML = `
+            <td>${tr.vehicle || 'N/A'}</td>
+            <td>${tr.date || 'N/A'}</td>
+            <td>${tr.status || 'N/A'}</td>`;
+          tripDetailsTable.appendChild(trEl);
+        });
+      }
+      tripModal.style.display = 'flex';
+    }
+
+    function closeModal() {
+      tripModal.style.display = 'none';
+    }
+
+    searchInput.addEventListener('input', renderDrivers);
+
+    document.getElementById('logout').onclick = () => {
+      signOut(auth).then(() => {
+        window.location.href = "admin-login.html";
+      });
+    };
+
+    window.closeModal = closeModal; // needed for inline onclick
+  </script>
+</body>
+</html>

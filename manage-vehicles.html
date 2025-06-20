@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Manage Vehicles</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+    }
+
+    header {
+      background: #343a40;
+      color: white;
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    header h2 {
+      margin: 0;
+    }
+
+    .top-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    .top-buttons a, #logout {
+      background: #6c757d;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .top-buttons a:hover, #logout:hover {
+      background: #5a6268;
+    }
+
+    main {
+      padding: 20px;
+      max-width: 900px;
+      margin: auto;
+    }
+
+    h3 {
+      text-align: center;
+      margin-bottom: 15px;
+      color: #333;
+    }
+
+    form {
+      background: #ffffff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+
+    input, button {
+      padding: 10px;
+      margin: 6px 0;
+      width: 100%;
+      box-sizing: border-box;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    button[type="submit"] {
+      background: #007bff;
+      color: white;
+      border: none;
+    }
+
+    button[type="submit"]:hover {
+      background: #0056b3;
+    }
+
+    #searchInput {
+      padding: 10px;
+      margin-top: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      margin-top: 20px;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #ddd;
+      text-align: center;
+    }
+
+    th {
+      background-color: #f8f9fa;
+    }
+
+    .delete-vehicle {
+      background: #e53935;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .delete-vehicle:hover {
+      background: #b71c1c;
+    }
+
+    @media (max-width: 600px) {
+      header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .top-buttons {
+        flex-direction: column;
+        width: 100%;
+        margin-top: 10px;
+      }
+
+      .top-buttons a, #logout {
+        width: 100%;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h2>Manage Vehicles</h2>
+    <div class="top-buttons">
+      <a href="admin_dashboard.html">← Back to Dashboard</a>
+      <button id="logout">Logout</button>
+    </div>
+  </header>
+
+  <main>
+    <h3>Add New Vehicle</h3>
+
+    <form id="addVehicleForm">
+      <input type="text" id="vehicleName" placeholder="Vehicle Name" required />
+      <input type="text" id="vehiclePlate" placeholder="Plate Number" required />
+      <button type="submit">Add Vehicle</button>
+    </form>
+
+    <input type="text" id="searchInput" placeholder="Search by name or plate..." />
+
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Plate</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="vehicleList">
+        <tr><td colspan="4">Loading...</td></tr>
+      </tbody>
+    </table>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+    import { getDatabase, ref, onValue, push, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCX0BjrBiuk5FcClSQjpww2iD2YNsGl2gM",
+      authDomain: "ctu-vehicle-reservation-system.firebaseapp.com",
+      databaseURL: "https://ctu-vehicle-reservation-system-default-rtdb.firebaseio.com",
+      projectId: "ctu-vehicle-reservation-system",
+      storageBucket: "ctu-vehicle-reservation-system.appspot.com",
+      messagingSenderId: "17442181026",
+      appId: "1:17442181026:web:7b10c9d9eb04fdb4332cfb"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+    const vehiclesRef = ref(db, 'vehicles');
+
+    const vehicleList = document.getElementById('vehicleList');
+    const form = document.getElementById('addVehicleForm');
+    const nameInput = document.getElementById('vehicleName');
+    const plateInput = document.getElementById('vehiclePlate');
+    const searchInput = document.getElementById('searchInput');
+
+    let allVehicles = {};
+
+    onAuthStateChanged(auth, user => {
+      if (!user) {
+        alert("Please log in first.");
+        window.location.href = "admin-login.html";
+      } else {
+        setupListeners();
+      }
+    });
+
+    function setupListeners() {
+      onValue(vehiclesRef, snap => {
+        allVehicles = snap.val() || {};
+        filterAndRenderList();
+      });
+    }
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const name = nameInput.value.trim();
+      const plate = plateInput.value.trim().toUpperCase();
+      if (!name || !plate) return alert("Fill all fields.");
+
+      onValue(vehiclesRef, snap => {
+        const data = snap.val() || {};
+        if (Object.values(data).some(v => v.plate.toUpperCase() === plate)) {
+          alert("Plate already exists.");
+        } else {
+          push(vehiclesRef, { name, plate, status: 'Available' })
+            .then(() => {
+              form.reset();
+              alert("Vehicle added.");
+            });
+        }
+      }, { onlyOnce: true });
+    });
+
+    function filterAndRenderList() {
+      const q = searchInput.value.trim().toLowerCase();
+      vehicleList.innerHTML = '';
+
+      const entries = Object.entries(allVehicles)
+        .filter(([, v]) => v.name.toLowerCase().includes(q) || v.plate.toLowerCase().includes(q));
+
+      if (!entries.length) {
+        vehicleList.innerHTML = "<tr><td colspan='4'>No vehicles found.</td></tr>";
+      }
+
+      entries.forEach(([id, v]) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${v.name}</td>
+          <td>${v.plate}</td>
+          <td>${v.status || 'Available'}</td>
+          <td><button class="delete-vehicle">Delete</button></td>
+        `;
+        row.querySelector('.delete-vehicle').onclick = () => {
+          if (confirm(`Delete ${v.name}?`)) {
+            remove(ref(db, `vehicles/${id}`));
+          }
+        };
+        vehicleList.appendChild(row);
+      });
+    }
+
+    searchInput.addEventListener('input', filterAndRenderList);
+
+    document.getElementById('logout').onclick = () => {
+      signOut(auth).then(() => {
+        window.location.href = "admin-login.html";
+      });
+    };
+  </script>
+</body>
+</html>

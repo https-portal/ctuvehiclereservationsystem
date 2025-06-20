@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CTU Danao Vehicle Reservation</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: url('logo.png') no-repeat center center fixed;
+      background-size: contain;
+      background-color: #f0f4f8;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(10px);
+      padding: 40px 30px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+      max-width: 480px;
+      width: 100%;
+      animation: fadeIn 1.2s ease;
+    }
+
+    h1 {
+      font-size: 24px;
+      color: #1e3a8a;
+      margin-bottom: 5px;
+    }
+
+    h2 {
+      font-size: 16px;
+      color: #333;
+      margin-bottom: 25px;
+    }
+
+    .buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .buttons button {
+      background: #1e40af;
+      color: white;
+      border: none;
+      padding: 12px;
+      font-size: 15px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .buttons button:hover {
+      background: #102874;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    footer {
+      margin-top: 30px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (min-width: 500px) {
+      .buttons {
+        flex-direction: row;
+        justify-content: center;
+      }
+
+      .buttons button {
+        flex: 1;
+        max-width: 130px;
+      }
+    }
+
+    @media (max-height: 600px) {
+      body {
+        background-size: 80%;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>CTU Danao Campus</h1>
+    <h2>Vehicle Reservation System</h2>
+    
+    <div class="buttons">
+      <button onclick="window.location.href='reserve.html'">User</button>
+      <button onclick="window.location.href='driver-login.html'">Driver</button>
+      <button onclick="window.location.href='admin-login.html'">Admin</button>
+    </div>
+
+    <footer>
+      <p>© 2025 Cebu Technological University - Danao Campus</p>
+      <p>For support, contact: <a href="mailto:support@ctu.edu.ph">support@ctu.edu.ph</a></p>
+    </footer>
+  </div>
+
+</body>
+</html>

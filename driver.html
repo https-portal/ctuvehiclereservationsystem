@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Driver Trip Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      padding: 20px;
+      margin: 0;
+    }
+
+    h2 {
+      text-align: center;
+      color: #333;
+    }
+
+    #driverEmailDisplay {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      margin-top: 30px;
+      font-size: 20px;
+      color: #444;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 5px;
+    }
+
+    .reservation {
+      background: #fff;
+      padding: 15px;
+      margin: 15px auto;
+      max-width: 600px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .reservation p {
+      margin: 5px 0;
+    }
+
+    button {
+      padding: 10px 15px;
+      margin: 5px 5px 0 0;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .confirm { background-color: #28a745; color: white; }
+    .decline { background-color: #dc3545; color: white; }
+    .startTrip { background-color: #007bff; color: white; }
+    .endTrip { background-color: #17a2b8; color: white; }
+    .complete { background-color: #ffc107; color: black; }
+    #logout {
+      margin: 20px auto;
+      display: block;
+      background-color: #343a40;
+      color: white;
+      width: 200px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Driver Trip Dashboard</h2>
+  <div id="driverEmailDisplay"></div>
+
+  <h3 class="section-title">Current Trips</h3>
+  <div id="reservationsContainer"></div>
+
+  <h3 class="section-title">Trip History</h3>
+  <div id="historyContainer"></div>
+
+  <button id="logout">Logout</button>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getDatabase, ref, onValue, get, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCX0BjrBiuk5FcClSQjpww2iD2YNsGl2gM",
+      authDomain: "ctu-vehicle-reservation-system.firebaseapp.com",
+      databaseURL: "https://ctu-vehicle-reservation-system-default-rtdb.firebaseio.com",
+      projectId: "ctu-vehicle-reservation-system",
+      storageBucket: "ctu-vehicle-reservation-system.appspot.com",
+      messagingSenderId: "17442181026",
+      appId: "1:17442181026:web:7b10c9d9eb04fdb4332cfb"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+
+    const driverEmailDisplay = document.getElementById("driverEmailDisplay");
+    const reservationsContainer = document.getElementById("reservationsContainer");
+    const historyContainer = document.getElementById("historyContainer");
+
+    function getTimestamp() {
+      return new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" });
+    }
+
+    onAuthStateChanged(auth, user => {
+      if (!user) {
+        alert("Please login first.");
+        window.location.href = "driver-login.html";
+        return;
+      }
+
+      const driverEmail = user.email;
+      driverEmailDisplay.innerHTML = `<p><strong>Logged in as:</strong> ${driverEmail}</p>`;
+
+      const reservationsRef = ref(db, "reservations");
+
+      onValue(reservationsRef, (snapshot) => {
+        reservationsContainer.innerHTML = "";
+        historyContainer.innerHTML = "";
+        let currentFound = false;
+        let historyFound = false;
+
+        snapshot.forEach(child => {
+          const data = child.val();
+          const key = child.key;
+
+          const status = data.status?.toLowerCase();
+          const driverMatch = data.driverEmail?.trim().toLowerCase() === driverEmail.trim().toLowerCase();
+
+          const div = document.createElement("div");
+          div.className = "reservation";
+
+          div.innerHTML = `
+            <p><strong>Name:</strong> ${data.name || "N/A"}</p>
+            <p><strong>Destination:</strong> ${data.destination || "N/A"}</p>
+            <p><strong>Vehicle:</strong> ${data.vehicle || "N/A"}</p>
+            <p><strong>Plate Number:</strong> ${data.plate || "N/A"}</p>
+            <p><strong>Date:</strong> ${data.date || "N/A"}</p>
+            <p><strong>Time Slot:</strong> ${data.timeSlot || "N/A"}</p>
+            <p><strong>Status:</strong> ${data.status}</p>
+            <p><strong>Driver Confirmation:</strong> ${data.driverConfirmation || "Not yet"}</p>
+          `;
+
+          if (["approved", "ontrip", "returned"].includes(status) && driverMatch) {
+            currentFound = true;
+
+            const confirmBtn = document.createElement("button");
+            confirmBtn.className = "confirm";
+            confirmBtn.textContent = "Confirm";
+            confirmBtn.onclick = async () => {
+              await update(ref(db, `reservations/${key}`), {
+                driverConfirmation: "Confirmed"
+              });
+
+              const vehiclesSnap = await get(ref(db, "vehicles"));
+              if (vehiclesSnap.exists()) {
+                vehiclesSnap.forEach(vehicleChild => {
+                  const vehicle = vehicleChild.val();
+                  const vehicleKey = vehicleChild.key;
+                  if (vehicle.plate === data.plate) {
+                    update(ref(db, `vehicles/${vehicleKey}`), { status: "Reserved" });
+                  }
+                });
+              }
+
+              alert("Trip confirmed.");
+              location.reload();
+            };
+
+            const declineBtn = document.createElement("button");
+            declineBtn.className = "decline";
+            declineBtn.textContent = "Decline";
+            declineBtn.onclick = async () => {
+              await update(ref(db, `reservations/${key}`), {
+                driverConfirmation: "Declined"
+              });
+              alert("Trip declined.");
+              location.reload();
+            };
+
+            const startBtn = document.createElement("button");
+            startBtn.className = "startTrip";
+            startBtn.textContent = "Start Trip (ONTRIP)";
+            startBtn.onclick = async () => {
+              const timestamp = getTimestamp();
+
+              const vehiclesSnap = await get(ref(db, "vehicles"));
+              if (vehiclesSnap.exists()) {
+                vehiclesSnap.forEach(vehicleChild => {
+                  const vehicle = vehicleChild.val();
+                  const vehicleKey = vehicleChild.key;
+                  if (vehicle.plate === data.plate) {
+                    update(ref(db, `vehicles/${vehicleKey}`), { status: "ONTRIP" });
+                  }
+                });
+              }
+
+              await update(ref(db, `reservations/${key}`), {
+                tripStartTime: timestamp,
+                status: "ONTRIP"
+              });
+
+              alert("Vehicle set to ONTRIP.\nStart Time: " + timestamp);
+              location.reload();
+            };
+
+            const endBtn = document.createElement("button");
+            endBtn.className = "endTrip";
+            endBtn.textContent = "End Trip (RETURNED)";
+            endBtn.onclick = async () => {
+              const timestamp = getTimestamp();
+
+              const vehiclesSnap = await get(ref(db, "vehicles"));
+              if (vehiclesSnap.exists()) {
+                vehiclesSnap.forEach(vehicleChild => {
+                  const vehicle = vehicleChild.val();
+                  const vehicleKey = vehicleChild.key;
+                  if (vehicle.plate === data.plate) {
+                    update(ref(db, `vehicles/${vehicleKey}`), { status: "RETURNED" });
+                  }
+                });
+              }
+
+              await update(ref(db, `reservations/${key}`), {
+                tripEndTime: timestamp,
+                status: "RETURNED"
+              });
+
+              alert("Vehicle marked as RETURNED.\nEnd Time: " + timestamp);
+              location.reload();
+            };
+
+            const completeBtn = document.createElement("button");
+            completeBtn.className = "complete";
+            completeBtn.textContent = "Complete";
+            completeBtn.onclick = async () => {
+              const timestamp = getTimestamp();
+
+              await update(ref(db, `reservations/${key}`), {
+                status: "Completed",
+                completionTime: timestamp
+              });
+
+              const vehiclesSnap = await get(ref(db, "vehicles"));
+              if (vehiclesSnap.exists()) {
+                vehiclesSnap.forEach(vehicleChild => {
+                  const vehicle = vehicleChild.val();
+                  const vehicleKey = vehicleChild.key;
+                  if (vehicle.plate === data.plate) {
+                    update(ref(db, `vehicles/${vehicleKey}`), { status: "RETURN" });
+                  }
+                });
+              }
+
+              alert("Reservation marked as Completed.\nCompleted At: " + timestamp);
+              location.reload();
+            };
+
+            div.appendChild(confirmBtn);
+            div.appendChild(declineBtn);
+            if (status === "approved") div.appendChild(startBtn);
+            if (status === "ontrip") div.appendChild(endBtn);
+            if (status === "returned") div.appendChild(completeBtn);
+
+            reservationsContainer.appendChild(div);
+
+          } else if (status === "completed" && driverMatch) {
+            historyFound = true;
+            historyContainer.appendChild(div);
+          }
+        });
+
+        if (!currentFound) {
+          reservationsContainer.innerHTML = "<p style='text-align:center;'>No current trips assigned.</p>";
+        }
+
+        if (!historyFound) {
+          historyContainer.innerHTML = "<p style='text-align:center;'>No completed trips found.</p>";
+        }
+      });
+    });
+
+    document.getElementById("logout").onclick = () => {
+      signOut(auth).then(() => {
+        window.location.href = "driver-login.html";
+      });
+    };
+  </script>
+</body>
+</html>
